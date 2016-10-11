@@ -1,6 +1,12 @@
 extern crate scheduler;
 use std::sync::{Arc, Mutex, atomic};
 
+static NTHREADS_PER_CORE: usize = 2;
+static NCORES: usize = 4;
+static START_INDEX: usize = 0;
+static NICE_VALUES: [i32; 2] = [-5, 5];
+static PRIO_VALUES: [i32; 2] = [20, 40];
+
 #[derive(Debug)]
 struct SpinBarrier {
   nthreads: usize,
@@ -29,19 +35,9 @@ impl SpinBarrier {
   }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Sched {
-  RR,
-  FIFO,
-  OTHER
-}
-
 fn usage() {
   println!("./l2 <scheduler> <rounds> <iterations> <number>+");
 }
-
-static NTHREADS: usize = 2;
-static NCORES: usize = 4;
 
 fn parse_int(to_parse: &str) -> i32 {
   let parsed = to_parse.parse::<i32>();
@@ -61,11 +57,15 @@ fn bind_cpu(cpu_number: usize) {
   }
 }
 
-fn set_sched(scheduler: Sched, tid: usize) {
+fn set_sched(scheduler: scheduler::Policy, tid: usize) {
   let res = match scheduler {
-    Sched::RR => scheduler::set_self_policy(scheduler::Policy::RoundRobin, 0),
-    Sched::FIFO => scheduler::set_self_policy(scheduler::Policy::Fifo, 0),
-    Sched::OTHER => scheduler::set_self_policy(scheduler::Policy::Other, 0),
+    scheduler::Policy::RoundRobin |
+    scheduler::Policy::Fifo => scheduler::set_self_policy(scheduler, PRIO_VALUES[tid]),
+    scheduler::Policy::Other => scheduler::set_self_policy(scheduler, NICE_VALUES[tid]),
+    _ => {
+      println!("Unknown scheduler {:?}", scheduler);
+      std::process::exit(1);
+    }
   };
 
   if res.is_err() {
@@ -82,9 +82,9 @@ fn main() {
   }
 
   let scheduler = match argv[1].as_ref() {
-    "SCHED_RR" => Sched::RR,
-    "SCHED_FIFO" => Sched::FIFO,
-    "SCHED_OTHER" | "SCHED_NORMAL" => Sched::OTHER,
+    "SCHED_RR" => scheduler::Policy::RoundRobin,
+    "SCHED_FIFO" => scheduler::Policy::Fifo,
+    "SCHED_OTHER" | "SCHED_NORMAL" => scheduler::Policy::Other,
     _ => {
       println!("Unknown scheduler type: {:?}", argv[1]);
       std::process::exit(1);
@@ -99,17 +99,19 @@ fn main() {
     .map(|n| parse_int(&n))
     .collect();
 
+  // Arc = shared_ptr
   let numbers = Arc::new(nums);
-  let index = Arc::new(Mutex::new(0));
-  let barrier = Arc::new(SpinBarrier::new(NCORES * NTHREADS));
+  let index = Arc::new(Mutex::new(START_INDEX));
+  let barrier = Arc::new(SpinBarrier::new(NCORES * NTHREADS_PER_CORE));
 
-  let mut children = Vec::with_capacity(NCORES * NTHREADS);
+  let mut children = Vec::with_capacity(NCORES * NTHREADS_PER_CORE);
   for cpu_number in 0..NCORES {
-    for tid in 0..NTHREADS {
+    for tid in 0..NTHREADS_PER_CORE {
       let numbers = numbers.clone();
       let index = index.clone();
       let barrier = barrier.clone();
 
+      // This is a lambda
       children.push(std::thread::spawn(move || {
         bind_cpu(cpu_number);
         set_sched(scheduler, tid);
@@ -118,14 +120,11 @@ fn main() {
         for _ in 0..rounds {
           let mult;
           {
-            let mut index = index.lock().unwrap();
+            // Uses Lock Guard idiom
+            let mut locked_index = index.lock().unwrap();
 
-            mult = numbers[*index];
-            *index = if *index + 1 == numbers.len() {
-              0
-            } else {
-              *index + 1
-            };
+            mult = numbers[*locked_index];
+            *locked_index = (*locked_index + 1) % numbers.len();
           }
 
           for _ in 0..iters {
