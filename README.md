@@ -3,4 +3,5 @@
 
 #Build and Run
 
-> cargo run args_go_here
+> cargo build
+> ./lab_2 args_go_here

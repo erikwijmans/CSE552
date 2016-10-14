@@ -29,13 +29,13 @@ pub enum Policy {
 
 /// Set the scheduling policy for this process
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "emscripten"))]
-pub fn set_self_policy(policy: Policy, priority: i32) -> Result<(), ()> {
+pub fn set_self_policy(policy: Policy, priority: i32) -> Result<i32, i32> {
   set_policy(0, policy, priority)
 }
 
 /// Set the scheduling policy for a process
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "emscripten"))]
-pub fn set_policy(pid: i32, policy: Policy, priority: i32) -> Result<(), ()> {
+pub fn set_policy(pid: i32, policy: Policy, priority: i32) -> Result<i32, i32> {
   let c_policy = match policy {
     Policy::Other => SCHED_OTHER,
     Policy::Fifo => SCHED_FIFO,
@@ -50,14 +50,15 @@ pub fn set_policy(pid: i32, policy: Policy, priority: i32) -> Result<(), ()> {
   let params_ptr: *const sched_param = &params;
 
   if c_policy == SCHED_OTHER {
-    if set_self_priority(Which::Process, priority) == Err(()) {
-      return Err(());
+    let res = set_self_priority(Which::Process, priority);
+    if res.is_err() {
+      return res;
     }
   }
 
   match unsafe { sched_setscheduler(pid, c_policy, params_ptr) } {
-    0 => Ok(()),
-    _ => Err(()),
+    0 => Ok(0),
+    code @ _ => Err(code),
   }
 }
 
@@ -84,13 +85,13 @@ pub fn get_policy(pid: i32) -> Result<Policy, ()> {
 
 /// Set the cpu affinity for the current thread See `set_affinity`.
 #[cfg(any(target_os = "linux", target_os = "emscripten"))]
-pub fn set_self_affinity(cpuset: CpuSet) -> Result<(), ()> {
+pub fn set_self_affinity(cpuset: CpuSet) -> Result<i32, i32> {
   set_affinity(0, cpuset)
 }
 
 /// Set the cpu affinity for a thread.
 #[cfg(any(target_os = "linux", target_os = "emscripten"))]
-pub fn set_affinity(pid: i32, cpuset: CpuSet) -> Result<(), ()> {
+pub fn set_affinity(pid: i32, cpuset: CpuSet) -> Result<i32, i32> {
   cpuset.set_affinity(pid)
 }
 

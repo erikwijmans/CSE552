@@ -1,11 +1,12 @@
 extern crate scheduler;
 use std::sync::{Arc, Mutex, atomic};
 
-static NTHREADS_PER_CORE: usize = 2;
-static NCORES: usize = 4;
-static START_INDEX: usize = 0;
-static NICE_VALUES: [i32; 2] = [-5, 5];
-static PRIO_VALUES: [i32; 2] = [20, 40];
+const NTHREADS_PER_CORE: usize = 2;
+const NCORES: usize = 4;
+const START_INDEX: usize = 0;
+const NICE_VALUES: [i32; NTHREADS_PER_CORE] = [-5, 5];
+const PRIO_VALUES: [i32; NTHREADS_PER_CORE] = [40, 20];
+const TYPE: [&'static str; NTHREADS_PER_CORE] = ["High", "Low"];
 
 #[derive(Debug)]
 struct SpinBarrier {
@@ -36,67 +37,73 @@ impl SpinBarrier {
 }
 
 fn usage() {
-  println!("./l2 <scheduler> <rounds> <iterations> <number>+");
+  println!("./lab_2 <scheduler> <rounds> <iterations> <number>+");
 }
 
-fn parse_int(to_parse: &str) -> i32 {
-  let parsed = to_parse.parse::<i32>();
-  if parsed.is_err() {
-    println!("Could not parse {:?} as an i32", to_parse);
-    std::process::exit(1);
+fn parse_int(to_parse: std::string::String) -> i32 {
+  match to_parse.parse::<i32>() {
+    Ok(n) => n,
+    _ => {
+      println!("Could not parse {:?} into an int", to_parse);
+      std::process::exit(1);
+    }
   }
-
-  parsed.unwrap()
 }
 
 fn bind_cpu(cpu_number: usize) {
   let cpu = scheduler::CpuSet::single(cpu_number);
-  let res = scheduler::set_self_affinity(cpu);
-  if res.is_err() {
-    println!("Got error in bind_cpu {:?}", res);
-  }
+
+  match scheduler::set_self_affinity(cpu) {
+    Ok(_) => return,
+    Err(code) => {
+      println!("Error code {} while trying to bind on a cpu", code);
+      std::process::exit(1);
+    }
+  };
 }
 
 fn set_sched(scheduler: scheduler::Policy, tid: usize) {
-  let res = match scheduler {
-    scheduler::Policy::RoundRobin |
-    scheduler::Policy::Fifo => scheduler::set_self_policy(scheduler, PRIO_VALUES[tid]),
-    scheduler::Policy::Other => scheduler::set_self_policy(scheduler, NICE_VALUES[tid]),
+  let prio = match &scheduler {
+    &scheduler::Policy::RoundRobin |
+    &scheduler::Policy::Fifo => PRIO_VALUES[tid],
+    &scheduler::Policy::Other => NICE_VALUES[tid],
     _ => {
       println!("Unknown scheduler {:?}", scheduler);
       std::process::exit(1);
     }
   };
 
-  if res.is_err() {
-    println!("Got error in set_sched {:?}", res);
-    std::process::exit(1);
-  }
+  match scheduler::set_self_policy(scheduler, prio) {
+    Ok(_) => return,
+    Err(code) => {
+      println!("Got error code {} while setting the scheduler", code);
+      std::process::exit(1);
+    }
+  };
 }
 
 fn main() {
-  let argv: Vec<_> = std::env::args().collect();
-  if argv.len() <= 5 {
+  let mut argv = std::env::args();
+
+  if argv.len() <= 5 || argv.next().unwrap() != "lab_2" {
     usage();
     std::process::exit(1);
   }
 
-  let scheduler = match argv[1].as_ref() {
+  let scheduler = match argv.next().unwrap().as_ref() {
     "SCHED_RR" => scheduler::Policy::RoundRobin,
     "SCHED_FIFO" => scheduler::Policy::Fifo,
     "SCHED_OTHER" | "SCHED_NORMAL" => scheduler::Policy::Other,
-    _ => {
-      println!("Unknown scheduler type: {:?}", argv[1]);
+    ref sched @ _ => {
+      println!("Unknown scheduler type: {:?}", sched);
       std::process::exit(1);
     }
   };
 
-  let rounds: i32 = parse_int(&argv[2]);
-  let iters: i32 = parse_int(&argv[3]);
+  let rounds: i32 = parse_int(argv.next().unwrap());
+  let iters: i32 = parse_int(argv.next().unwrap());
 
-  let nums: Vec<i32> = argv[4..]
-    .into_iter()
-    .map(|n| parse_int(&n))
+  let nums: Vec<i32> = argv.map(|n| parse_int(n))
     .collect();
 
   // Arc = shared_ptr
@@ -111,27 +118,34 @@ fn main() {
       let index = index.clone();
       let barrier = barrier.clone();
 
-      // This is a lambda
-      children.push(std::thread::spawn(move || {
-        bind_cpu(cpu_number);
-        set_sched(scheduler, tid);
-        barrier.wait();
+      // Rust doesn't support method overloading,
+      // so a builder with chaining is used instead
+      children.push(std::thread::Builder::new()
+        .name(format!("{}{}", TYPE[tid], cpu_number))
+        // This is a lambda
+        .spawn(move || {
+          bind_cpu(cpu_number);
+          set_sched(scheduler, tid);
+          barrier.wait();
 
-        for _ in 0..rounds {
-          let mult;
-          {
-            // Uses Lock Guard idiom
-            let mut locked_index = index.lock().unwrap();
+          for _ in 0..rounds {
+            let mult;
+            {
+              // Uses Lock Guard idiom
+              let mut locked_index = index.lock().unwrap();
 
-            mult = numbers[*locked_index];
-            *locked_index = (*locked_index + 1) % numbers.len();
+              mult = numbers[*locked_index];
+              *locked_index = (*locked_index + 1) % numbers.len();
+            }
+
+            for _ in 0..iters {
+              let x = mult * mult * mult;
+            }
           }
+        })
+        .unwrap());
 
-          for _ in 0..iters {
-            let x = mult * mult * mult;
-          }
-        }
-      }));
+      // std::thread::sleep(std::time::Duration::from_millis(1000));
     }
   }
 

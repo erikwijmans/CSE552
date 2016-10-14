@@ -1,2 +1,7 @@
-1. Erik Wijmans, Ethan Vaughan, Sam Frank
+Erik Wijmans, Ethan Vaughan, Sam Frank
 
+1.  Our barrier can be verified that it works by looking at the trace sched_switch.  If the barrier works, then all 8 worker threads should terminate around the same time despite being spawned at different times.  To highlight this, we added an artifical delay of 1 second between each thread being spawned.  The result of this can be seen in barrier.png, which shows that all threads terminate at the same time.
+
+2.
+
+weight given nice value = 1024/(1.25^nice)
