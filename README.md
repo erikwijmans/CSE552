@@ -30,13 +30,9 @@ Iterations: 10000
 ## Questions
 Sched_FIFO with four threads does some very strange things and we would very much like to understand exactly why it does that and how to fix it.
 
-## Suggestions
-
-
 
 ## Time Spent
 
 5 hours coding/debugging the test programming and the parser srcipt
 
 10 hours doing the writeup and analysis
-
