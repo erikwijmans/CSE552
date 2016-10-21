@@ -5,3 +5,77 @@ Erik Wijmans, Ethan Vaughan, Sam Frank
 2.
 
 weight given nice value = 1024/(1.25^nice)
+
+
+High1 1761.289 ms 88.064%
+
+Low1 201.007 ms 10.050%
+
+High0 1775.289 ms 88.764%
+
+Low0 190.731 ms 9.537%
+
+High2 1755.057 ms 87.753%
+
+Low2 196.463 ms 9.823%
+
+High3 1765.098 ms 88.255%
+
+Low3 193.176 ms 9.659%
+
+NORMAL
+
+High'1 Average: 2.618895 ms Total: 1123.506 ms 44.940%
+
+High1 Average: 2.435107 ms Total: 1115.279 ms 44.611%
+
+Low'1 Average: 1.663822 ms Total: 121.459 ms 4.858%
+
+Low1 Average: 2.202037 ms Total: 118.910 ms 4.756%
+
+High'2 Average: 2.534907 ms Total: 1112.824 ms 44.513%
+
+High2 Average: 2.637768 ms Total: 1123.689 ms 44.948%
+
+Low'2 Average: 2.469375 ms Total: 118.530 ms 4.741%
+
+Low2 Average: 2.067517 ms Total: 119.916 ms 4.797%
+
+RR
+
+High'1 Average: 92.308385 ms Total: 1200.009 ms 48.000%
+
+High1 Average: 92.308000 ms Total: 1200.004 ms 48.000%
+
+Low'1 Average: 0.000000 ms Total: 0.000 ms 0.000%
+
+Low1 Average: 0.000000 ms Total: 0.000 ms 0.000%
+
+High'2 Average: 85.824071 ms Total: 1201.537 ms 48.061%
+
+High2 Average: 99.874167 ms Total: 1198.490 ms 47.940%
+
+Low'2 Average: 0.000000 ms Total: 0.000 ms 0.000%
+
+Low2 Average: 0.000000 ms Total: 0.000 ms 0.000%
+
+
+FIFO
+
+High'1 Average: 0.000000 ms Total: 0.000 ms 0.000%
+
+High1 Average: 0.037000 ms Total: 0.037 ms 0.001%
+
+Low'1 Average: 555.019500 ms Total: 1110.039 ms 44.402%
+
+Low1 Average: 0.000000 ms Total: 0.000 ms 0.000%
+
+High'2 Average: 0.035000 ms Total: 0.035 ms 0.001%
+
+High2 Average: 0.000000 ms Total: 0.000 ms 0.000%
+
+Low'2 Average: 555.003000 ms Total: 1110.006 ms 44.400%
+
+Low2 Average: 0.000000 ms Total: 0.000 ms 0.000%
+
+crashy crashy if no 4 barriers

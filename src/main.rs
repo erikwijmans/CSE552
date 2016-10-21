@@ -1,12 +1,20 @@
 extern crate scheduler;
 use std::sync::{Arc, Mutex, atomic};
+use std::io::Write;
 
-const NTHREADS_PER_CORE: usize = 2;
+const NBARRARIERS: usize = 2;
+const NPRIOS: usize = 2;
+const NTHREADS_PER_CORE: usize = 4;
 const NCORES: usize = 4;
 const START_INDEX: usize = 0;
-const NICE_VALUES: [i32; NTHREADS_PER_CORE] = [-5, 5];
-const PRIO_VALUES: [i32; NTHREADS_PER_CORE] = [40, 20];
-const TYPE: [&'static str; NTHREADS_PER_CORE] = ["High", "Low"];
+const NICE_VALUES: [i32; NPRIOS + 1] = [-5, 5, -10];
+const PRIO_VALUES: [i32; NPRIOS + 1] = [98, 90, 99];
+const TYPE: [&'static str; 4] = ["High", "Low", "High'", "Low'"];
+
+
+fn usage() -> &'static str {
+  "./lab_2 <scheduler> <rounds> <iterations> <number>+"
+}
 
 #[derive(Debug)]
 struct SpinBarrier {
@@ -15,7 +23,9 @@ struct SpinBarrier {
   nspinning: atomic::AtomicUsize
 }
 
+// Implement methods on the SpinBarrier struct
 impl SpinBarrier {
+  // Static function that serves as the constructor
   fn new(nthreads: usize) -> SpinBarrier {
     SpinBarrier {
       nthreads: nthreads,
@@ -24,6 +34,7 @@ impl SpinBarrier {
     }
   }
 
+  // Member function to wait on the barrier
   fn wait(&self) {
     if self.nspinning.fetch_add(1, atomic::Ordering::Relaxed) == self.nthreads - 1 {
       self.gen.fetch_add(1, atomic::Ordering::Relaxed);
@@ -36,17 +47,10 @@ impl SpinBarrier {
   }
 }
 
-fn usage() {
-  println!("./lab_2 <scheduler> <rounds> <iterations> <number>+");
-}
-
 fn parse_int(to_parse: std::string::String) -> i32 {
   match to_parse.parse::<i32>() {
     Ok(n) => n,
-    _ => {
-      println!("Could not parse {:?} into an int", to_parse);
-      std::process::exit(1);
-    }
+    _ => panic!("Could not parse {:?} into an int", to_parse),
   }
 }
 
@@ -55,10 +59,7 @@ fn bind_cpu(cpu_number: usize) {
 
   match scheduler::set_self_affinity(cpu) {
     Ok(_) => return,
-    Err(code) => {
-      println!("Error code {} while trying to bind on a cpu", code);
-      std::process::exit(1);
-    }
+    Err(code) => panic!("Got error when binding on CPU {:?}", code),
   };
 }
 
@@ -67,37 +68,27 @@ fn set_sched(scheduler: scheduler::Policy, tid: usize) {
     &scheduler::Policy::RoundRobin |
     &scheduler::Policy::Fifo => PRIO_VALUES[tid],
     &scheduler::Policy::Other => NICE_VALUES[tid],
-    _ => {
-      println!("Unknown scheduler {:?}", scheduler);
-      std::process::exit(1);
-    }
+    _ => panic!("Unknown scheduler {:?}", scheduler),
   };
 
   match scheduler::set_self_policy(scheduler, prio) {
     Ok(_) => return,
-    Err(code) => {
-      println!("Got error code {} while setting the scheduler", code);
-      std::process::exit(1);
-    }
+    Err(code) => panic!("Got error code {} while setting the scheduler", code),
   };
 }
 
 fn main() {
   let mut argv = std::env::args();
 
-  if argv.len() <= 5 || argv.next().unwrap() != "lab_2" {
-    usage();
-    std::process::exit(1);
+  if argv.len() <= 5 || argv.next().unwrap() != "./lab_2" {
+    panic!("{:?}", usage());
   }
 
   let scheduler = match argv.next().unwrap().as_ref() {
     "SCHED_RR" => scheduler::Policy::RoundRobin,
     "SCHED_FIFO" => scheduler::Policy::Fifo,
     "SCHED_OTHER" | "SCHED_NORMAL" => scheduler::Policy::Other,
-    ref sched @ _ => {
-      println!("Unknown scheduler type: {:?}", sched);
-      std::process::exit(1);
-    }
+    ref sched @ _ => panic!("Unknown scheduler type: {:?}", sched),
   };
 
   let rounds: i32 = parse_int(argv.next().unwrap());
@@ -109,37 +100,57 @@ fn main() {
   // Arc = shared_ptr
   let numbers = Arc::new(nums);
   let index = Arc::new(Mutex::new(START_INDEX));
-  let barrier = Arc::new(SpinBarrier::new(NCORES * NTHREADS_PER_CORE));
+  let mut barriers = Vec::with_capacity(NBARRARIERS);
+  for _ in 0..NBARRARIERS {
+    barriers.push(Arc::new(SpinBarrier::new(NCORES * NTHREADS_PER_CORE / NBARRARIERS)));
+  }
 
   let mut children = Vec::with_capacity(NCORES * NTHREADS_PER_CORE);
-  for cpu_number in 0..NCORES {
-    for tid in 0..NTHREADS_PER_CORE {
-      let numbers = numbers.clone();
-      let index = index.clone();
-      let barrier = barrier.clone();
+  set_sched(scheduler, 2);
 
+  // println!("Starting to spawn children");
+  // std::io::stdout().flush();
+
+  for cpu_number in 0..NCORES {
+    for t in 0..NTHREADS_PER_CORE {
+      let t_number = t % NPRIOS;
       // Rust doesn't support method overloading,
       // so a builder with chaining is used instead
-      children.push(std::thread::Builder::new()
-        .name(format!("{}{}", TYPE[tid], cpu_number))
-        // This is a lambda
-        .spawn(move || {
+      let builder = std::thread::Builder::new().name(format!("{}{}", TYPE[t], cpu_number));
+      let (numbers, index, barrier) =
+        (numbers.clone(), index.clone(), barriers[t % NBARRARIERS].clone());
+
+      children.push(builder.spawn(move || {
+          // This is a lambda
+
+          /*println!("Spawned child {:?}", cpu_number * NTHREADS_PER_CORE + t);
+          std::io::stdout().flush();*/
+
           bind_cpu(cpu_number);
-          set_sched(scheduler, tid);
+          set_sched(scheduler, t_number);
+
+         /* println!("child {:?} waiting on the SpinBarrier",
+                   cpu_number * NTHREADS_PER_CORE + t);
+          std::io::stdout().flush();*/
+
           barrier.wait();
 
+          /*println!("child {:?} through SpinBarrier",
+                   cpu_number * NTHREADS_PER_CORE + t);
+          std::io::stdout().flush();*/
+
           for _ in 0..rounds {
-            let mult;
+            let to_mult;
             {
               // Uses Lock Guard idiom
               let mut locked_index = index.lock().unwrap();
 
-              mult = numbers[*locked_index];
+              to_mult = numbers[*locked_index];
               *locked_index = (*locked_index + 1) % numbers.len();
             }
 
             for _ in 0..iters {
-              let x = mult * mult * mult;
+              let x = to_mult * to_mult * to_mult;
             }
           }
         })
@@ -148,6 +159,9 @@ fn main() {
       // std::thread::sleep(std::time::Duration::from_millis(1000));
     }
   }
+
+  // println!("I am done spawning my children");
+  // std::io::stdout().flush();
 
   for child in children {
     let _ = child.join();

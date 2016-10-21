@@ -50,15 +50,12 @@ pub fn set_policy(pid: i32, policy: Policy, priority: i32) -> Result<i32, i32> {
   let params_ptr: *const sched_param = &params;
 
   if c_policy == SCHED_OTHER {
-    let res = set_self_priority(Which::Process, priority);
-    if res.is_err() {
-      return res;
-    }
+    try!(set_self_priority(Which::Process, priority));
   }
 
   match unsafe { sched_setscheduler(pid, c_policy, params_ptr) } {
     0 => Ok(0),
-    code @ _ => Err(code),
+    error_code @ _ => Err(error_code),
   }
 }
 
