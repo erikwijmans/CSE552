@@ -7,15 +7,21 @@ const NPRIOS: usize = 2;
 const NTHREADS_PER_CORE: usize = 4;
 const NCORES: usize = 4;
 const START_INDEX: usize = 0;
+
+// Arrays of priority and nice values, which array is used is determined
+// by what scheduler is choosen.  The 3rd value in both arrays is the
+// nice/prio value of the spawning thread
+//
 const NICE_VALUES: [i32; NPRIOS + 1] = [-5, 5, -10];
 const PRIO_VALUES: [i32; NPRIOS + 1] = [98, 90, 99];
 const TYPE: [&'static str; 4] = ["High", "Low", "High'", "Low'"];
 
-
+// Usage string
 fn usage() -> &'static str {
   "./lab_2 <scheduler> <rounds> <iterations> <number>+"
 }
 
+// Struct that holds the data needed to implement a spin barrier
 #[derive(Debug)]
 struct SpinBarrier {
   nthreads: usize,
@@ -47,6 +53,7 @@ impl SpinBarrier {
   }
 }
 
+// Function to safely parse a string to an interger
 fn parse_int(to_parse: std::string::String) -> i32 {
   match to_parse.parse::<i32>() {
     Ok(n) => n,
@@ -54,6 +61,8 @@ fn parse_int(to_parse: std::string::String) -> i32 {
   }
 }
 
+// Safely binds a thread to a CPU using sched.h wrappers provided
+// by the scheduler namespace
 fn bind_cpu(cpu_number: usize) {
   let cpu = scheduler::CpuSet::single(cpu_number);
 
@@ -63,6 +72,8 @@ fn bind_cpu(cpu_number: usize) {
   };
 }
 
+// Indexs the prio/nice arrays based on the scheduler and then
+// sets both the scheduler and prio/nice value.
 fn set_sched(scheduler: scheduler::Policy, tid: usize) {
   let prio = match &scheduler {
     &scheduler::Policy::RoundRobin |
@@ -79,11 +90,15 @@ fn set_sched(scheduler: scheduler::Policy, tid: usize) {
 
 fn main() {
   let mut argv = std::env::args();
+  // Throw away the program name
+  argv.next().unwrap();
 
-  if argv.len() <= 5 || argv.next().unwrap() != "./lab_2" {
+  // Check to make sure we have enough arguements
+  if argv.len() <= 4 {
     panic!("{:?}", usage());
   }
 
+  // Parse the first arguement (scheduler)
   let scheduler = match argv.next().unwrap().as_ref() {
     "SCHED_RR" => scheduler::Policy::RoundRobin,
     "SCHED_FIFO" => scheduler::Policy::Fifo,
@@ -91,9 +106,11 @@ fn main() {
     ref sched @ _ => panic!("Unknown scheduler type: {:?}", sched),
   };
 
+  // Parse the number of rounds and the number of iterations
   let rounds: i32 = parse_int(argv.next().unwrap());
   let iters: i32 = parse_int(argv.next().unwrap());
 
+  // Parses the remaining arguements into a vector of numbers
   let nums: Vec<i32> = argv.map(|n| parse_int(n))
     .collect();
 
@@ -114,14 +131,15 @@ fn main() {
   for cpu_number in 0..NCORES {
     for t in 0..NTHREADS_PER_CORE {
       let t_number = t % NPRIOS;
+      let barrier_index = t % NBARRARIERS;
       // Rust doesn't support method overloading,
       // so a builder with chaining is used instead
       let builder = std::thread::Builder::new().name(format!("{}{}", TYPE[t], cpu_number));
-      let (numbers, index, barrier) =
-        (numbers.clone(), index.clone(), barriers[t % NBARRARIERS].clone());
 
-      children.push(builder.spawn(move || {
-          // This is a lambda
+      // Sets up new Arc's that will be passed to the thread
+      let (numbers, index, barrier) =
+        (numbers.clone(), index.clone(), barriers[barrier_index].clone());
+      children.push(builder.spawn(move || { // This is a lambda
 
           /*println!("Spawned child {:?}", cpu_number * NTHREADS_PER_CORE + t);
           std::io::stdout().flush();*/
