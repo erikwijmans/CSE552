@@ -1,9 +1,9 @@
 # Lab2, Linux Scheduler Profiling
 
 ## Contact information
-[Erik Wijmans](erikwijmans@wustl.edu)
-[Ethan Vaughan](evaughan@wustl.edu)
-[Sam Frank](sjfrank@wustl.edu)
+[Erik Wijmans](mailto:erikwijmans@wustl.edu)
+[Ethan Vaughan](mailto:evaughan@wustl.edu)
+[Sam Frank](mailto:sjfrank@wustl.edu)
 
 ## Sources
 
